@@ -7,7 +7,6 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
-#include <regex.h>
 
 #include "ffget.h"
 #include "pldstr.h"
@@ -1558,19 +1557,24 @@ int AM_add_disclaimer_insert_html( 	struct AM_disclaimer_details *dd, FFGET_FILE
 		 ** If we reached the end of the boundary, check if force html insertion is
 		 ** enabled. If so, force the html disclaimer into the message.
 		 **/
-		if((dd->boundary_found == 1) && (strncmp(boundary, line, boundary_length) == 0)) {
+		if((dd->boundary_found == 1) && (strncmp(boundary, line, boundary_length) == 0))
+		{
 
-			DAM LOGGER_log("%s:%d:AM_add_disclaimer_insert_html: End of boundary reached before html disclamer was added...",FL);
-			if (glb.force_for_bad_html == 1)
-			{
-				DAM LOGGER_log("%s:%d:Forcing insertion of html disclaimer into non valid html body...",FL);
+		    if (!dd->html_inserted)
+		    {
+	            DAM LOGGER_log("%s:%d:AM_add_disclaimer_insert_html: End of boundary reached before html disclamer was added...",FL);
+	            if (glb.force_for_bad_html == 1)
+	            {
+	                DAM LOGGER_log("%s:%d:Forcing insertion of html disclaimer into non valid html body...",FL);
 
-				dd->html_inserted = 1;
+	                dd->html_inserted = 1;
 
-				AM_disclaimer_html_perform_insertion( dd, f, newf );
+	                AM_disclaimer_html_perform_insertion( dd, f, newf );
 
-			}
+	            }
+		    }
 
+		    DAM LOGGER_log("%s:%d:Adding boubndary; Finalizing adding HTML disclaimer...",FL);
 			// write the boundary line
 			fprintf(newf, "%s", line);
 
@@ -1625,11 +1629,12 @@ int AM_add_disclaimer_insert_html( 	struct AM_disclaimer_details *dd, FFGET_FILE
 				fprintf(newf,"%s>%s",line, glb.ldelimeter);
 				AM_disclaimer_html_perform_insertion( dd, f, newf );
 				fprintf(newf, "%s", (tmpbody +1));
-
+                dd->html_inserted = 1;
 			} else {
 				fprintf(newf,"%s%s",line, glb.ldelimeter);
 				AM_disclaimer_html_perform_insertion( dd, f, newf );
 				fprintf(newf,"<%s", (tmpbody+1));
+                dd->html_inserted = 1;
 			}
 
 		//	break; ??? why is this BREAK here?
@@ -2530,9 +2535,9 @@ int AM_insert_disclaimer_into_segment( FFGET_FILE *f, FILE *newf, struct AM_disc
 		DAM LOGGER_log("%s:%d:AM_insert_disclaimer_into_segment:DEBUG: Conditions potentially right for HTML disclaimer to be added",FL);
 
 		result = AM_add_disclaimer_insert_html(  dd, f, newf );
-		if ((glb.verbose)&&(0 == result))
+		if ((0 == result))
 		{
-			LOGGER_log("WARNING: Could not insert HTML disclaimer into email");
+		    if (glb.verbose)LOGGER_log("WARNING: Could not insert HTML disclaimer into email");
 		} else {
 			dd->html_inserted = 1;
 			insert_success = 1;
@@ -3719,6 +3724,7 @@ int AM_alter_header( char *filename, char *header, char *change, int change_mode
   2.  FILE *outputfile, 
   3.  char *new_attachment_name, 
   4.  char *headers , 
+  5. change_content_enc -> do not change content encoding if this is 0. Required for renaming attachments.
   ------------------
   Exit Codes	: 
   Side Effects	: 
@@ -3729,7 +3735,7 @@ Comments:
 Changes:
 
 \------------------------------------------------------------------*/
-int AM_attachment_replace_header_filter( struct MIMEH_header_info *hinfo, char *new_attachment_name, char **headers )
+int AM_attachment_replace_header_filter( struct MIMEH_header_info *hinfo, char *new_attachment_name, char **headers, int change_content_enc )
 {
 	struct PLD_strreplace replace;
 
@@ -3755,7 +3761,7 @@ int AM_attachment_replace_header_filter( struct MIMEH_header_info *hinfo, char *
 	// Because we can currently only encode our new attachment using BASE64
 	//		we need to make sure that the content-transfer-encoding field is
 	//		appropriately set.
-	if (hinfo->content_transfer_encoding != _CTRANS_ENCODING_B64)
+    if ( (hinfo->content_transfer_encoding != _CTRANS_ENCODING_B64) &&(change_content_enc != 0) )
 	{
 		if (strlen(hinfo->content_transfer_encoding_string) < 1)
 		{
@@ -3821,7 +3827,7 @@ int AM_attachment_replace_write_data( char *new_attachment_name, FILE *outputfil
 }
 
 /*-----------------------------------------------------------------\
-  Function Name	: AM_nullify_attachment_recurse
+  Function Name : AM_attachment_modify_recurse -> previously AM_attachment_replace_recurse
   Returns Type	: int
   ----Parameter List
   1. struct MIMEH_header_info *hinf, 
@@ -3838,24 +3844,22 @@ Comments:
 Changes:
 
 \------------------------------------------------------------------*/
-int AM_attachment_replace_recurse( struct MIMEH_header_info *hinfo, FFGET_FILE *f, FILE *outputfile, regex_t *preg, char *new_attachment_name, int iteration )
+int AM_attachment_modify_recurse( struct MIMEH_header_info *hinfo, FFGET_FILE *f, FILE *outputfile,
+        AM_Modify_attachment * ma, int iteration )
 {
 	int result = 0;
 //	int boundary_exists=0;
 	size_t bc;
 
-	if (AM_DNORMAL) LOGGER_log("%s:%d:AM_attachment_replace_recurse:DEBUG: Starting: iteration=%d",FL, iteration );
+    if (AM_DNORMAL) LOGGER_log("%s:%d:AM_attachment_modify_recurse:DEBUG: Starting: iteration=%d",FL, iteration );
 	while (1)
 	{
-		int regresult=0;
+        int regresult=1;
+        int renameregresult= 1;
 		int attachment_data_written=0;
 		char *header_ptr=NULL;
 		char *original_ptr=NULL;
 		char buffer[1024];
-		//		char CR[]="\n";
-		//		char CRLF[]="\n\r";
-		//		char *delimeter;
-
 
 		MIMEH_set_doubleCR_save(0);
 		result = MIMEH_headers_get( hinfo, f );
@@ -3874,22 +3878,22 @@ int AM_attachment_replace_recurse( struct MIMEH_header_info *hinfo, FFGET_FILE *
 		}
 
 
-		if (AM_DNORMAL)LOGGER_log("%s:%d:AM_attachment_replace_recurse:DEBUG: Headers read, now processing", FL );
+        if (AM_DNORMAL)LOGGER_log("%s:%d:AM_attachment_modify_recurse:DEBUG: Headers read, now processing", FL );
 
 		original_ptr = MIMEH_get_headers_original_ptr();
 		header_ptr = MIMEH_get_headers_ptr();
 
-		if (AM_DNORMAL)LOGGER_log("%s:%d:AM_attachment_replace_recurse:DEBUG: Headers=\n%s\n", FL, original_ptr );
+        if (AM_DNORMAL)LOGGER_log("%s:%d:AM_attachment_modify_recurse:DEBUG: Headers=\n%s\n", FL, original_ptr );
 
 		if (original_ptr == NULL)
 		{
-			LOGGER_log("%s:%d:AM_attachment_replace_recurse:ERROR: Original headers came back NULL",FL);
+            LOGGER_log("%s:%d:AM_attachment_modify_recurse:ERROR: Original headers came back NULL",FL);
 			return 1;
 		}
 
 		if (header_ptr == NULL)
 		{
-			LOGGER_log("%s:%d:AM_attachment_replace_recurse:ERROR: Header ptr (for processing) came back NULL",FL);
+            LOGGER_log("%s:%d:AM_attachment_modify_recurse:ERROR: Header ptr (for processing) came back NULL",FL);
 			return 1;
 		}
 
@@ -3901,7 +3905,7 @@ int AM_attachment_replace_recurse( struct MIMEH_header_info *hinfo, FFGET_FILE *
 		result = MIMEH_headers_process( hinfo, header_ptr );
 		if (result != 0)
 		{
-			LOGGER_log("%s:%d:AM_attachment_replace_recurse:ERROR: While processing headers for mailpack", FL );
+            LOGGER_log("%s:%d:AM_attachment_modify_recurse:ERROR: While processing headers for mailpack", FL );
 			break;
 		}
 
@@ -3917,18 +3921,28 @@ int AM_attachment_replace_recurse( struct MIMEH_header_info *hinfo, FFGET_FILE *
 					||(hinfo->content_type >= _CTYPE_MULTIPART_START && hinfo->content_type <= _CTYPE_MULTIPART_END))\
 				&& (hinfo->boundary_located > 0))
 		{
-			if (AM_DNORMAL)LOGGER_log("%s:%d:AM_attachment_replace_recurse:DEBUG: pushing BS='%s'",FL, hinfo->boundary );
+            if (AM_DNORMAL)LOGGER_log("%s:%d:AM_attachment_modify_recurse:DEBUG: pushing BS='%s'",FL, hinfo->boundary );
 			BS_push( hinfo->boundary );
-			//boundary_exists = 1;
+            // boundary_exists = 1;
 		}
 
 		// Now, determine if this block/segment is the one which contains our file which we must 'nullify'
 		regresult=1;
+        renameregresult=1;
 		if (strlen(hinfo->filename) > 0)
 		{
-			regresult = regexec( preg, hinfo->filename, 0, NULL, 0 );
-			if(AM_DNORMAL)LOGGER_log("%s:%d:AM_attachment_replace_recurse:DEBUG: FileName Regex match = %d [filename = '%s']"\
+            if (ma->do_replace)
+            {
+                regresult = regexec( &(ma->replace_reg), hinfo->filename, 0, NULL, 0 );
+                if(AM_DNORMAL)LOGGER_log("%s:%d:AM_attachment_modify_recurse:DEBUG: FileReplace Regex match = %d [filename = '%s']"\
 					,FL,regresult,hinfo->filename);
+            }
+            if (ma->do_rename)
+            {
+                renameregresult = regexec( &(ma->rename_reg), hinfo->filename, 0, NULL, 0 );
+                if(AM_DNORMAL)LOGGER_log("%s:%d:AM_attachment_modify_recurse:DEBUG: FileRename Regex match = %d [filename = '%s']"\
+                        ,FL,regresult,hinfo->filename);
+            }
 		} 
 
 
@@ -3941,15 +3955,19 @@ int AM_attachment_replace_recurse( struct MIMEH_header_info *hinfo, FFGET_FILE *
 		//	Until I come up with a better solution, I'll still write the headers, but I'll then 
 		//		eliminate all the content [until the next boundary, assuming a boundary exists]
 		//	
-		if (regresult > 0)
+        if (regresult > 0 && renameregresult > 0)
 		{
 			int bl = strlen(original_ptr);
 
 			bc = fwrite( original_ptr, sizeof(char), bl, outputfile );
-			if (bc != bl) LOGGER_log("%s:%d:AM_attachment_replace_recurse:ERROR: Wrote %d bytes instead of %d", FL, bc, bl);
-			if(AM_DNORMAL)LOGGER_log("%s:%d:AM_attachment_replace_recurse:DEBUG: Wrote original headers:\n%s",FL,original_ptr);
+            if (bc != bl) LOGGER_log("%s:%d:AM_attachment_modify_recurse:ERROR: Wrote %d bytes instead of %d", FL, bc, bl);
+            if(AM_DNORMAL)LOGGER_log("%s:%d:AM_attachment_modify_recurse:DEBUG: Wrote original headers:\n%s",FL,original_ptr);
 		} 
-		else 
+        char *new_attachment_filename = NULL;
+        // final finename should not be bigger than the suffix + filename lengths.
+        char final_fname[_MIMEH_FILENAMELEN_MAX + 1 + MAX_SUFFIX_LEN + 1] = {'0'};
+        strncpy (final_fname, hinfo->filename, strlen (hinfo->filename));
+        if (regresult == 0)
 		{
 			// If we did have a filename "HIT" in these headers
 			//
@@ -3957,83 +3975,68 @@ int AM_attachment_replace_recurse( struct MIMEH_header_info *hinfo, FFGET_FILE *
 			//	in order to reflect the new filenames that we'll be
 			//	using for the replaced attachment
 
-			char *new_attachment_filename;
-
 			// Check for delimeters in the new attachment name, and make
 			//	the new_attachment_filename just the last segment of that.
 
-			new_attachment_filename=strrchr(new_attachment_name,'/');
+            new_attachment_filename=strrchr(ma->replace_with,'/');
 
 			// If looking for the forward-slash failed, try looking for the backslash
-			if (new_attachment_filename == NULL) new_attachment_filename=strrchr(new_attachment_name,'\\');
+            if (new_attachment_filename == NULL) new_attachment_filename=strrchr(ma->replace_with,'\\');
 
 			// If both forward and backslash searches failed, then just let the new attachment filename
 			//		be the same as the one passed to us via the parameters
 			if (new_attachment_filename == NULL)
 			{
-				new_attachment_filename = new_attachment_name;
+                new_attachment_filename = ma->replace_with;
 			} else {
 
+                if (strlen (new_attachment_filename) == 1 ) {
+                    // only directory name given...
+                    new_attachment_filename = hinfo->filename;
+                }
 				// If we did get a hit - then we increment by one character so that
 				//	we don't have the directory seperator in our way.
 				new_attachment_filename++;
+            }
 			}
 
-			// When it comes to creating the new headers, we have to check to see if we're
-			//		in a suitable situation to either (a) entirely replace the headers with our own
-			//		or (b) modify existing headers.
-			//
-			// Existing header modification is required when we're dealing with headers that
-			//		make up the start of the whole MIME package, this is because there's a lot
-			//		more information contained in them than just the file-attachment information
-			//		Thus, for this situation, we'll use a header-modification function.
-			//
-			// If the headers are not the primary ones, we can just remove the existing ones
-			//		and write in our own as generated by the content-type, disposition and encoding
-
-			if (iteration > 1)
+        if (renameregresult == 0)
 			{
-				// If we're dealing with a non-primary header situation, just replace the old headers
-				//		with our new fabricated ones
+            if (new_attachment_filename) {
+                bzero (final_fname, sizeof (final_fname));
+                strncpy (final_fname, new_attachment_filename, strlen (new_attachment_filename) );
+            }
+            strncat(final_fname, ma->suffix, strlen (ma->suffix));
+        }
 
-				if(AM_DNORMAL)LOGGER_log("%s:%d:AM_attachment_replace_recurse:DEBUG: Writing clean headers",FL);
-
-				fprintf( outputfile, "Content-Type: %s;name=\"%s\"%sContent-Transfer-Encoding: base64%sContent-Disposition: attachment;filename=\"%s\"%s%s"\
-						, hinfo->content_type_string\
-						, new_attachment_filename, glb.ldelimeter, glb.ldelimeter\
-						, new_attachment_filename, glb.ldelimeter, glb.ldelimeter\
-						);
-			} else {
-
+        if (regresult == 0 || renameregresult == 0)
+        {
 				// If we're dealing with a primary-header situation, we have to carefully
 				//		search-replace the old filenames with our own.  This has to be done
 				//		within the strict confines between Content-Type:...;\n and/or Content-Disposition
 
 				char *duplicate_headers;
 
-				if(AM_DNORMAL)LOGGER_log("%s:%d:AM_attachment_replace_recurse:DEBUG: Primary header attachment replacement",FL,new_attachment_filename);
+            if(AM_DNORMAL)LOGGER_log("%s:%d:AM_attachment_modify_recurse:DEBUG: Primary header attachment replacement",FL,new_attachment_filename);
 				duplicate_headers = strdup( original_ptr );
 				if (duplicate_headers == NULL)
 				{
-					LOGGER_log("%s:%d:AM_attachment_replace_recurse:ERROR: Could not allocate memory to hold temporary copy of headers",FL);
+                LOGGER_log("%s:%d:AM_attachment_modify_recurse:ERROR: Could not allocate memory to hold temporary copy of headers",FL);
 					return 1;
 				}
 
-				//if(AM_DNORMAL)LOGGER_log("%s:%d:AM_attachment_replace_recurse:DEBUG: Seeking and replacing content type, disposition headers in main headers",FL);
-				AM_attachment_replace_header_filter( hinfo, new_attachment_filename, &duplicate_headers );
-
-				if(AM_DNORMAL)LOGGER_log("%s:%d:AM_attachment_replace_recurse:DEBUG: Writing recycled headers\n%s",FL, duplicate_headers);
+            AM_attachment_replace_header_filter (hinfo, final_fname, &duplicate_headers, regresult == 0 ? 1 : 0 );
+            if(AM_DNORMAL)LOGGER_log("%s:%d:AM_attachment_modify_recurse:DEBUG: Writing recycled headers\n%s",FL, duplicate_headers);
 				fprintf( outputfile, "%s", duplicate_headers);
 
 				if (duplicate_headers != NULL) free( duplicate_headers );
 			}
-		}
 
 		// Clean up the memory allocation
 		result = MIMEH_headers_cleanup();
 		if (result != 0)
 		{
-			LOGGER_log("%s:%d:AM_attachment_replace_recurse:ERROR: while attempting to clean up headers memory allocation", FL );
+            LOGGER_log("%s:%d:AM_attachment_modify_recurse:ERROR: while attempting to clean up headers memory allocation", FL );
 			break;
 		}
 
@@ -4041,7 +4044,7 @@ int AM_attachment_replace_recurse( struct MIMEH_header_info *hinfo, FFGET_FILE *
 		//		it and see if it contains anything interesting for us to seek out.
 		if ((regresult != 0)&&((hinfo->content_type == _CTYPE_RFC822)))
 		{
-			result=AM_attachment_replace_recurse( hinfo, f, outputfile, preg, new_attachment_name, 1 );
+            result=AM_attachment_modify_recurse( hinfo, f, outputfile, ma, 1 );
 		}
 
 
@@ -4064,7 +4067,7 @@ int AM_attachment_replace_recurse( struct MIMEH_header_info *hinfo, FFGET_FILE *
 				{
 					/***
 					  if ((AM_DNORMAL)&&(boundary_exists==1))\
-					  LOGGER_log("%s:%d:AM_attachment_replace_recurse:DEBUG: Boundary hit on line %d\nBoundary Exists=%d\nBoundary line=%s"\
+                      LOGGER_log("%s:%d:AM_attachment_modify_recurse:DEBUG: Boundary hit on line %d\nBoundary Exists=%d\nBoundary line=%s"\
 					  ,FL,f->linecount,boundary_exists, buffer);
 					 ***/
 
@@ -4074,12 +4077,12 @@ int AM_attachment_replace_recurse( struct MIMEH_header_info *hinfo, FFGET_FILE *
 					//		creating anew from the existing one.
 					if (regresult == 0)
 					{
-						AM_attachment_replace_write_data( new_attachment_name, outputfile, glb.ldelimeter );
+                        AM_attachment_replace_write_data( ma->replace_with, outputfile, glb.ldelimeter );
 						attachment_data_written=1;
 					}
 
 					bc = fwrite( buffer, sizeof(char), buflen, outputfile );
-					if (bc != buflen) LOGGER_log("%s:%d:AM_attachment_replace_recurse:ERROR: Wrote %d bytes instead of %d", FL, bc, buflen);
+                    if (bc != buflen) LOGGER_log("%s:%d:AM_attachment_modify_recurse:ERROR: Wrote %d bytes instead of %d", FL, bc, buflen);
 					break;
 				} // end of boundary-detect
 
@@ -4091,7 +4094,7 @@ int AM_attachment_replace_recurse( struct MIMEH_header_info *hinfo, FFGET_FILE *
 				if (regresult != 0)
 				{
 					bc = fwrite( buffer, sizeof(char), buflen, outputfile );
-					if (bc != buflen) LOGGER_log("%s:%d:AM_attachment_replace_recurse:ERROR: Wrote %d bytes instead of %d", FL, bc, buflen);
+                    if (bc != buflen) LOGGER_log("%s:%d:AM_attachment_modify_recurse:ERROR: Wrote %d bytes instead of %d", FL, bc, buflen);
 				}
 
 			} else {
@@ -4107,7 +4110,7 @@ int AM_attachment_replace_recurse( struct MIMEH_header_info *hinfo, FFGET_FILE *
 
 				if ((regresult == 0)&&(attachment_data_written == 0))
 				{
-					AM_attachment_replace_write_data( new_attachment_name, outputfile, glb.ldelimeter );
+                    AM_attachment_replace_write_data( ma->replace_with, outputfile, glb.ldelimeter );
 				}
 
 				break; // break if FEOF occurs
@@ -4123,13 +4126,13 @@ int AM_attachment_replace_recurse( struct MIMEH_header_info *hinfo, FFGET_FILE *
 
 	} // Infinite while(1)
 
-	if(AM_DNORMAL)LOGGER_log("%s:%d:AM_attachment_replace_recurse:DEBUG: End of function.",FL);
+    if(AM_DNORMAL)LOGGER_log("%s:%d:AM_attachment_modify_recurse:DEBUG: End of function.",FL);
 	return 0;
 }
 
 
 /*-----------------------------------------------------------------\
-  Function Name	: AM_attachment_replace
+  Function Name : AM_attachment_modify -> previously AM_attachment_replace
   Returns Type	: int
   ----Parameter List
   1. char *mpackname,  mailpack which we're going to replace the file in
@@ -4151,11 +4154,10 @@ only the last segment of the full path will be used in the headers
 Changes:
 
 \------------------------------------------------------------------*/
-int AM_attachment_replace( char *mpackname, char *attachmentname, char *new_attachment_name )
+int AM_attachment_modify( char *mpackname, AM_Modify_attachment * ma)
 {
 	struct MIMEH_header_info hinfo;
-	regex_t preg;
-	int result = 0;
+    int result = -1;
 	char tmpfname[256];
 	char oldfname[256];
 	FILE *inputfile;
@@ -4171,6 +4173,10 @@ int AM_attachment_replace( char *mpackname, char *attachmentname, char *new_atta
 	//		so that we can hold-off saving the headers to the file until we've 
 	//		checked them to see if we want them or not.
 
+    if (!ma && (ma->do_rename || ma->do_replace) ) {
+        LOGGER_log("%s:%d:AM_attachment_modify: either provide replace/rename as argument for %s.", FL, mpackname);
+        return 1;
+    }
 	BS_init();
 
 	inputfile = fopen( mpackname, "r" );
@@ -4194,15 +4200,26 @@ int AM_attachment_replace( char *mpackname, char *attachmentname, char *new_atta
 	MIMEH_set_headers_save_original(1);
 
 
+    if (ma->do_replace) {
 	// Compile our Regular-expression for the filename.
-	result = regcomp( &preg, attachmentname, REG_EXTENDED|REG_ICASE|REG_NOSUB );
+        result = regcomp( &(ma->replace_reg), ma->replace, REG_EXTENDED|REG_ICASE|REG_NOSUB );
 	if (result != 0)
 	{
-		LOGGER_log("%s:%d:AM_replace_attachment: Unable to compile regular expression '%s'", FL, attachmentname );
-		return 0;
+            LOGGER_log("%s:%d:AM_attachment_modify: complilation for '%s' failed", FL, ma->replace );
+            return 1;
+        }
 	}
 
-	result=AM_attachment_replace_recurse( &hinfo, &f, outputfile, &preg, new_attachment_name, 1 );
+    if (ma->do_rename)
+    {
+        result = regcomp( &(ma->rename_reg), ma->rename_this, REG_EXTENDED|REG_ICASE|REG_NOSUB );
+        if (result != 0) {
+            LOGGER_log("%s:%d:AM_attachment_modify: complilation for '%s' failed", FL, ma->rename_this );
+            return 1;
+        }
+    }
+
+    result=AM_attachment_modify_recurse( &hinfo, &f, outputfile, ma, 1 );
 
 	MIMEH_set_headers_save_original(0);	
 
@@ -4210,21 +4227,21 @@ int AM_attachment_replace( char *mpackname, char *attachmentname, char *new_atta
 	result = rename( mpackname, oldfname );
 	if ( result != 0 ) 
 	{
-		LOGGER_log("%s:%d:AM_attachment_replace_recurse:ERROR: Unable to rename original mailpack '%s' to '%s' (%s)", FL, mpackname, oldfname, strerror(errno));
+        LOGGER_log("%s:%d:AM_attachment_modify:ERROR: Unable to rename original mailpack '%s' to '%s' (%s)", FL, mpackname, oldfname, strerror(errno));
 		return 1;
 	}
 
 	result = rename( tmpfname, mpackname );
 	if (result != 0)
 	{
-		LOGGER_log("%s:%d:AM_attachment_replace_recurse:ERROR: Unable to rename temporary mailpack '%s' to '%s' (%s)", FL, tmpfname, mpackname, strerror(errno));
+        LOGGER_log("%s:%d:AM_attachment_modify:ERROR: Unable to rename temporary mailpack '%s' to '%s' (%s)", FL, tmpfname, mpackname, strerror(errno));
 		return 1;
 	}	
 
 	result = unlink( oldfname );
 	if ( result != 0)
 	{
-		LOGGER_log("%s:%d:AM_attachment_replace_recurse:ERROR: Unable to unlink/remove '%s' (%s)", FL, oldfname, strerror(errno));
+        LOGGER_log("%s:%d:AM_attachment_modify:ERROR: Unable to unlink/remove '%s' (%s)", FL, oldfname, strerror(errno));
 		return 1;
 	}
 
