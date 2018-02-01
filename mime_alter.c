@@ -4164,6 +4164,9 @@ int AM_attachment_modify( char *mpackname, AM_Modify_attachment * ma)
 	FILE *outputfile;
 	FFGET_FILE f;
 
+    SS_init(&(hinfo.ss_filenames));
+    SS_init(&(hinfo.ss_names));
+
 	// Nullifying an attachment can sometimes be a little bit tricky, we have to
 	//		dig down into the nesting of the MIME email and keep tabs on our
 	//		boundaries (via a Boundary-stack).  This all requires about as much work
