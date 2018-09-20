@@ -23,6 +23,8 @@
 #define AM_NULLIFY_MATCH_MODE_FILENAME 1
 #define AM_NULLIFY_MATCH_MODE_CONTENT_TYPE 2
 
+#include <regex.h>
+
 struct AM_disclaimer_details {
 
 	// File details
@@ -62,6 +64,26 @@ struct AM_disclaimer_details {
 #define AM_HEADERBUFFER_MAX 100
 #define AM_HEADERBUFFER_ITEM_SIZE 1024
 
+#define ATTACHMENT_SUFFIX_MAX 10
+typedef struct attachment_suffix {
+    char* attachment_name_pattern;
+    char* attachment_suffix;
+    regex_t reg;
+}AM_attachment_suffix;
+
+#define MAX_SUFFIX_LEN 16
+typedef struct modify_attachment {
+    char* replace; // attachment_name;
+    char* replace_with; // new_attachment_name;
+    char* rename_this; //rename_attachment_regex;
+    int do_rename;
+    int do_replace;
+    int rename_regex_success;
+    int replace_regex_success;
+    char suffix[MAX_SUFFIX_LEN]; // suffix in case of renaming the file.
+    regex_t replace_reg;
+    regex_t rename_reg;
+}AM_Modify_attachment;
 struct AM_globals {
 
 	int debug;				// Low level debugging
@@ -74,6 +96,7 @@ struct AM_globals {
 	int nullify_all;			/* Remove ALL filename'd attachments */
 	int alter_signed;		/* Do we alter signed emails ? */
 	int header_long_search;	/* do we search through email bodies for more headers, like qmail bounces */
+	int rename_att;
 
 	char ldelimeter[3];
 
@@ -146,7 +169,7 @@ int AM_set_altersigned( int level );
 int AM_set_pretext( int level );
 int AM_set_header_long_search( int level );
 int AM_base64_encode( char *enc_fname, char *out_fname );
-int AM_attachment_replace( char *mpackname, char *attachmentname, char *new_attachment_name );
+int AM_attachment_modify( char *mpackname, AM_Modify_attachment * ma);
 int AM_insert_Xheader( char *fname, char *xheader);
 int AM_alter_header( char *filename, char *header, char *change, int change_mode );
 
