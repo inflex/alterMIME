@@ -147,11 +147,17 @@ int qp_encode( char *out, size_t out_size, char *in, size_t in_size, char *line_
 				charout_size = 1;
 			}
 
-			if (current_line_length +charout_size >= 79) { // Was 76, updated to fix Outlook problems
+			// 0.3.10 and before (to when it was nerfed for Outlook - failed to soft wrap lines in all quoted-printable output
+			// resulting in part busting the RFC821 1000 character line limit. MTAs would then insert newlines and so breaking
+			// the part and also voiding any DKIM signature. This reinstates the 76 character soft line breaks and fixes an
+			// off-by-one error in resetting the current_line_length
+			// pgregg@proofpoint.com
+
+			if (current_line_length +charout_size >= 76) {
 				//snprintf(op, out_remaining, "%s=\r\n", paragraph);
 				snprintf(op, out_remaining, "%s=%s", paragraph, line_terminator);
-				op+= strlen(paragraph);// +3; /** jump the output + =\r\n **/
-				out_remaining-= (strlen(paragraph)); // Was +3, updated to fix Outlook problems
+				op+= strlen(paragraph) +3;// /** jump the output + =\r\n **/
+				out_remaining-= (strlen(paragraph) +3);
 
 				QPD LOGGER_log("%s:%d:qp_encode:DEBUG: Soft break (%Zd + %d > 76 char) for '%s'", FL, current_line_length, charout_size, paragraph);
 				
@@ -159,7 +165,7 @@ int qp_encode( char *out, size_t out_size, char *in, size_t in_size, char *line_
 				paragraph[0] = '\0';
 				pp_remaining = sizeof(paragraph);
 				pp = paragraph;
-				current_line_length=-1;
+				current_line_length=0;
 
 			}
 
