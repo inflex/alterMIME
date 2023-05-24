@@ -1543,7 +1543,7 @@ int AM_add_disclaimer_insert_html( 	struct AM_disclaimer_details *dd, FFGET_FILE
 
 	if (dd->boundary_found == 1)
 	{
-		snprintf(boundary, sizeof(boundary), "--%s", dd->boundary);
+		snprintf(boundary, sizeof(boundary), "--%.*s", AM_BOUNDARY_BUFFER_SIZE -2, dd->boundary);
 		boundary_length = strlen(boundary);
 	}
 
@@ -3378,13 +3378,13 @@ int AM_insert_Xheader( char *fname, char *xheader)
 	snprintf(tpn, sizeof(tpn), "%s",fname);
 
 	do {
-		if (strlen(tpn) < (sizeof(tpn) -2))
+		size_t tpn_len = strlen(tpn);
+		if (tpn_len < (sizeof(tpn) -2))
 		{
 			/** Changed the temp filename suffix chat to a hypen because under
 			 ** windows appending multiple .'s results in a filename that isn't
 			 ** acceptable - Thanks to Nico for bringing this to my attention **/
-			//			LOGGER_log("%s:%d:AM_insert_Xheader:NOTICE: Adjusting temp file name for header insert",FL);
-			snprintf(tpn, sizeof(tpn),"%sX", tpn);
+			strncat(tpn, "X", sizeof(tpn) -2);
 
 		} else {
 			LOGGER_log("%s:%d:AM_insert_Xheader:ERROR: Temporary file name string buffer out of space!",FL);
@@ -3516,9 +3516,10 @@ int AM_alter_header( char *filename, char *header, char *change, int change_mode
 	snprintf(tpn, sizeof(tpn), "%s",filename);
 
 	do {
-		if (strlen(tpn) < (sizeof(tpn) -2))
-		{
-			snprintf(tpn, sizeof(tpn),"%sX", tpn);
+		size_t tpn_len = strlen(tpn);
+
+		if (tpn_len < (sizeof(tpn) -2)) {
+			strncat(tpn, "X", sizeof(tpn) -2);
 		}
 		else
 		{

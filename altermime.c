@@ -375,7 +375,7 @@ int main( int argc, char **argv )
 
 		glb.input_is_stdin = 1;
 
-		snprintf(scratch,sizeof(scratch),"%s/%ld%d.amtmp", glb.tmpdir, time(NULL), getpid());
+		snprintf(scratch,sizeof(scratch),"%.*s/%ld%d.amtmp", (int)(sizeof(scratch) -20), glb.tmpdir, time(NULL), getpid());
 		//		free(glb.input_file);
 
 		glb.input_file = strdup(scratch);

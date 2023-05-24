@@ -1,7 +1,7 @@
 #ifndef __alterMIME__
 #define __alterMIME__
 
-#define LIBAM_VERSION "200811241138"
+#define LIBAM_VERSION "202305242149"
 
 #define AM_RETURN_SIGNED_EMAIL 10
 #define AM_RETURN_B64_ENCODED_EMAIL 12
@@ -23,6 +23,8 @@
 #define AM_NULLIFY_MATCH_MODE_FILENAME 1
 #define AM_NULLIFY_MATCH_MODE_CONTENT_TYPE 2
 
+#define AM_BOUNDARY_BUFFER_SIZE 1024
+
 struct AM_disclaimer_details {
 
 	// File details
@@ -33,7 +35,7 @@ struct AM_disclaimer_details {
 	int content_type;
 	int content_encoding;
 	int boundary_found;
-	char boundary[1024];
+	char boundary[AM_BOUNDARY_BUFFER_SIZE];
 
 	//
 
