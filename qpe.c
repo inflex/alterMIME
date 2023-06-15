@@ -106,7 +106,7 @@ int qp_encode( char *out, size_t out_size, char *in, size_t in_size, char *line_
 		char charout[4];
 		int charout_size=0;
 
-		if (lineend != '\0') {
+		if (*lineend != '\0') {
 			if (linestart == NULL) {
 				linestart = in;
 			} else {

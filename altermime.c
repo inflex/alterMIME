@@ -20,7 +20,7 @@ Description:   Altermime is a program/object which will allow arbitary alteratio
 #include "logger.h"
 
 /* Global DEFINES */
-char ALTERMIMEAPP_VERSION[]="alterMIME v0.3.11 (November-2008) by Paul L Daniels - http://www.pldaniels.com/altermime\n";
+char ALTERMIMEAPP_VERSION[]="alterMIME v0.3.12 (May 2023) by Paul L Daniels - http://www.pldaniels.com/altermime\n";
 char ALTERMIMEAPP_USAGE[]="altermime --input=<input mime pack>   ( --input=- for stdin )\n"
 "	[--disclaimer=<disclaimer file>]\n"
 "	[--disclaimer-html=<HTML disclaimer file>]\n"
@@ -375,7 +375,7 @@ int main( int argc, char **argv )
 
 		glb.input_is_stdin = 1;
 
-		snprintf(scratch,sizeof(scratch),"%s/%ld%d.amtmp", glb.tmpdir, time(NULL), getpid());
+		snprintf(scratch,sizeof(scratch),"%.*s/%ld%d.amtmp", (int)(sizeof(scratch) -20), glb.tmpdir, time(NULL), getpid());
 		//		free(glb.input_file);
 
 		glb.input_file = strdup(scratch);
