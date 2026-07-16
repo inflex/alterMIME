@@ -1,5 +1,8 @@
+// Copyright (c) 2026 Paul L. Daniels (pldaniels.com)
+// SPDX-License-Identifier: PLD-1.0
+// Licence: https://pldaniels.com/licence
+//
 /*------------------------------------------------------------------------
-Module:        /extra/development/altermime-0.1.1/altermime.c
 Author:        Paul L Daniels
 Project:       AlterMime
 State:         Development
@@ -20,7 +23,7 @@ Description:   Altermime is a program/object which will allow arbitary alteratio
 #include "logger.h"
 
 /* Global DEFINES */
-char ALTERMIMEAPP_VERSION[]="alterMIME v0.3.12 (May 2023) by Paul L Daniels - http://www.pldaniels.com/altermime\n";
+char ALTERMIMEAPP_VERSION[]="alterMIME v0.3.12\n";
 char ALTERMIMEAPP_USAGE[]="altermime --input=<input mime pack>   ( --input=- for stdin )\n"
 "	[--disclaimer=<disclaimer file>]\n"
 "	[--disclaimer-html=<HTML disclaimer file>]\n"
