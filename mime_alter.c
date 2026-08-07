@@ -1403,10 +1403,17 @@ int AM_disclaimer_load_text( char *fname, char **textptr )
 	if (0 == stat(fname, &st))
 	{
 		char *p;
+
+		if (0 == st.st_size) {
+			DAM LOGGER_log("%s:%d:AM_disclaimer_load_text:DEBUG: Ignoring empty file '%s'", FL, fname);
+			return -1;
+		}
+
+
 		p = malloc((st.st_size +1)*sizeof(char));  // We have to add 1 so that we delimit the data with a \0
 		if (p == NULL) {
 			LOGGER_log("%s:%d:AM_disclaimer_load_text:ERROR: Unable to allocate memory to load file '%s'", FL, fname);
-			return 1;
+			return -1;
 		}
 
 		if (p)
@@ -1433,6 +1440,7 @@ int AM_disclaimer_load_text( char *fname, char **textptr )
 
 	} else {
 		LOGGER_log("%s:%d:AM_disclaimer_load_text:ERROR: Cannot stat '%s' (%s)",FL,fname,strerror(errno));
+		return -1;
 	}
 
 
@@ -1785,7 +1793,7 @@ int AM_load_disclaimers( struct AM_disclaimer_details *dd )
 	{
 		if (glb.disclaimer_plain_type == AM_DISCLAIMER_TYPE_FILENAME)
 		{
-			AM_disclaimer_load_text( glb.disclaimer_plain, &(dd->disclaimer_text_plain) );
+			dud_text = AM_disclaimer_load_text( glb.disclaimer_plain, &(dd->disclaimer_text_plain) );
 		}
 		else
 		{
@@ -1801,7 +1809,7 @@ int AM_load_disclaimers( struct AM_disclaimer_details *dd )
 	{
 		if (glb.disclaimer_HTML_type == AM_DISCLAIMER_TYPE_FILENAME)
 		{
-			AM_disclaimer_load_text( glb.disclaimer_HTML, &(dd->disclaimer_text_HTML) );
+			dud_html = AM_disclaimer_load_text( glb.disclaimer_HTML, &(dd->disclaimer_text_HTML) );
 		}
 		else
 		{
@@ -1816,7 +1824,7 @@ int AM_load_disclaimers( struct AM_disclaimer_details *dd )
 	{
 		if (glb.disclaimer_b64_type == AM_DISCLAIMER_TYPE_FILENAME)
 		{
-			AM_base64_decode_to_buffer( glb.disclaimer_b64, &(dd->disclaimer_text_b64) );
+			dud_b64 = AM_base64_decode_to_buffer( glb.disclaimer_b64, &(dd->disclaimer_text_b64) );
 		} else {
 			dd->disclaimer_text_b64 = strdup( glb.disclaimer_b64 );
 			AM_base64_decode_buffer( dd->disclaimer_text_b64, strlen(dd->disclaimer_text_b64));
@@ -1826,9 +1834,9 @@ int AM_load_disclaimers( struct AM_disclaimer_details *dd )
 	}
 
 	// If our disclaiemrs are all 'dud's, then we should just return with an error.
-	if ((dud_html == 1)&&(dud_text == 1)&&(dud_b64 == 1))
+	if ((dud_html != 0)&&(dud_text != 0)&&(dud_b64 != 0))
 	{
-		LOGGER_log("%s:%d:AM_load_disclaimers: Neither the Plain-text , HTML or BASE64 disclaimer were valid to insert, skipping disclaimer-insertion routine\n");
+		LOGGER_log("%s:%d:AM_load_disclaimers: Neither the Plain-text, HTML or BASE64 disclaimer were valid to insert, skipping disclaimer-insertion routine\n", FL);
 		return -1;
 	}
 
