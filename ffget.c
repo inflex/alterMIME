@@ -550,7 +550,7 @@ char *FFGET_fgets( char *linein, int maxsize, FFGET_FILE *f )
 				// if we have another \r after it, in which case, we
 				// turn on SINGLE_DELIMETER_MODE.
 
-				if ( (*crlfpos == '\r') )
+				if ( *crlfpos == '\r' )
 				{
 					f->linebreak = FFGET_LINEBREAK_CR;
 					snprintf(f->lastbreak,sizeof(f->lastbreak),"\r");
